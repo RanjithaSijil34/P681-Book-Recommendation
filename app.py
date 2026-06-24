@@ -1,36 +1,38 @@
 import streamlit as st
+import pickle
 import pandas as pd
 import numpy as np
-import pickle
+from sklearn.metrics.pairwise import cosine_similarity
 
+# -----------------------------
+# Page Configuration
+# -----------------------------
 st.set_page_config(
     page_title="Book Recommendation System",
     page_icon="📚",
     layout="wide"
 )
 
-# =========================
-# Load Models
-# =========================
+# -----------------------------
+# Load Data
+# -----------------------------
+@st.cache_data
+def load_data():
+    popular_df = pickle.load(open('popular.pkl', 'rb'))
+    pt = pickle.load(open('pivot.pkl', 'rb'))
+    books = pickle.load(open('books.pkl', 'rb'))
 
-popular_df = pickle.load(open("popular.pkl", "rb"))
-pt = pickle.load(open("pivot.pkl", "rb"))
-similarity_scores = pickle.load(open("similarity.pkl", "rb"))
-books = pickle.load(open("books.pkl", "rb"))
-content_similarity = pickle.load(open("content_similarity.pkl", "rb"))
+    similarity_scores = cosine_similarity(pt)
 
-# =========================
-# Helper Functions
-# =========================
-
-indices = pd.Series(
-    books.index,
-    index=books['Book-Title']
-).drop_duplicates()
+    return popular_df, pt, books, similarity_scores
 
 
-def collaborative_recommend(book_name):
+popular_df, pt, books, similarity_scores = load_data()
 
+# -----------------------------
+# Recommendation Function
+# -----------------------------
+def recommend(book_name):
     try:
         index = np.where(pt.index == book_name)[0][0]
 
@@ -43,9 +45,7 @@ def collaborative_recommend(book_name):
         recommendations = []
 
         for item in similar_items:
-            recommendations.append(
-                pt.index[item[0]]
-            )
+            recommendations.append(pt.index[item[0]])
 
         return recommendations
 
@@ -53,120 +53,56 @@ def collaborative_recommend(book_name):
         return []
 
 
-def content_recommend(book_name):
-
-    try:
-
-        idx = indices[book_name]
-
-        sim_score = list(
-            enumerate(content_similarity[idx])
-        )
-
-        sim_score = sorted(
-            sim_score,
-            key=lambda x: x[1],
-            reverse=True
-        )[1:6]
-
-        book_indices = [
-            i[0]
-            for i in sim_score
-        ]
-
-        return list(
-            books['Book-Title'].iloc[book_indices]
-        )
-
-    except:
-        return []
-
-
-def hybrid_recommend(book_name):
-
-    collab = collaborative_recommend(book_name)
-
-    content = content_recommend(book_name)
-
-    final = list(
-        dict.fromkeys(
-            collab + content
-        )
-    )
-
-    return final[:10]
-
-
-# =========================
-# UI
-# =========================
-
-st.title("📚 Hybrid Book Recommendation System")
-
-menu = st.sidebar.selectbox(
-    "Select Option",
-    [
-        "Popular Books",
-        "Book Recommendation"
-    ]
+# -----------------------------
+# Sidebar
+# -----------------------------
+menu = st.sidebar.radio(
+    "Navigation",
+    ["Popular Books", "Book Recommendation"]
 )
 
-# =========================
+# -----------------------------
 # Popular Books
-# =========================
-
+# -----------------------------
 if menu == "Popular Books":
 
-    st.subheader("🔥 Top Popular Books")
-
-    display_df = popular_df.reset_index()
+    st.title("📚 Popular Books")
 
     st.dataframe(
-        display_df.head(20),
+        popular_df,
         use_container_width=True
     )
 
-# =========================
-# Recommendation Section
-# =========================
+# -----------------------------
+# Recommendation Page
+# -----------------------------
+if menu == "Book Recommendation":
 
-elif menu == "Book Recommendation":
-
-    st.subheader("📖 Find Similar Books")
+    st.title("📖 Book Recommendation System")
 
     selected_book = st.selectbox(
-        "Choose a Book",
+        "Select a Book",
         sorted(pt.index.tolist())
     )
 
-    if st.button("Recommend Books"):
+    if st.button("Recommend"):
 
-        recommendations = hybrid_recommend(
-            selected_book
-        )
+        recommendations = recommend(selected_book)
 
-        st.success(
-            f"Recommendations for '{selected_book}'"
-        )
+        if recommendations:
 
-        if len(recommendations) > 0:
+            st.subheader("Recommended Books")
 
-            for i, book in enumerate(
-                recommendations,
-                start=1
-            ):
-                st.write(f"{i}. {book}")
+            for i, book in enumerate(recommendations, start=1):
+                st.write(f"**{i}. {book}**")
 
         else:
-            st.warning(
-                "No recommendations found."
-            )
+            st.error("No recommendations found.")
 
-# =========================
+# -----------------------------
 # Footer
-# =========================
-
+# -----------------------------
 st.markdown("---")
-st.write(
-    "Developed using Collaborative Filtering + Content-Based Filtering"
+st.markdown(
+    "Built using Collaborative Filtering and Cosine Similarity"
 )
